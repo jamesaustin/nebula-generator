@@ -24,3 +24,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# Platform files
+.DS_Store
