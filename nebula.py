@@ -116,6 +116,54 @@ class OctaveNoise(object):
             response.append('{}: {}'.format(c, directions))
         return '\n'.join(response)
 
+class HDR(object):
+    def __init__(self, width, height, channels, step_sample_rate):
+        self.fbuffer = [0.0] * (width * height * channels)
+        self.width = width
+        self.height = height
+        self.channels = channels
+        self.step_sample_rate = step_sample_rate
+
+    def colour(self, colour):
+        self.colour = colour
+
+    def accumulate(self, x, y, vx, vy):
+        fbuffer = self.fbuffer
+        width, height, channels = self.width, self.height, self.channels
+        red, green, blue = self.colour
+        step = 1 / self.step_sample_rate
+        for _ in range(self.step_sample_rate):
+            x += vx * step
+            y += vy * step
+            if x < 0 or x > width or y < 0 or y > height:
+                break
+            index = (int(x) + int(y) * width) * channels
+            # Buffer is BGRa format
+            fbuffer[index+0] += blue
+            fbuffer[index+1] += green
+            fbuffer[index+2] += red
+
+    def tonemap(self, target, exposure=1.0):
+        fbuffer = self.fbuffer
+        width, height, channels = self.width, self.height, self.channels
+
+        def _tonemap(n):
+            return (1 - mpow(2, -n * 0.005 * exposure)) * 255
+
+        # image.get_data() -> channels are '0b 1g 2r 3a' written to via bytes([x])
+        # ord(image.get_data()[index]) = int
+        # bytearray gives indexed access to the ints.
+        for x in range(width):
+            for y in range(height):
+                index = (x + y * width) * channels
+                # Buffer is BGRa format
+                target[index:index+3] = bytes([
+                    int(_tonemap(fbuffer[index+0])),
+                    int(_tonemap(fbuffer[index+1])),
+                    int(_tonemap(fbuffer[index+2]))
+                ])
+
+
 class Simulation(object):
     def __init__(self, vx_t0, vy_t0):
         self.x = []
@@ -133,10 +181,7 @@ class Simulation(object):
         self.vy.append(fuzzy(self.vy_t0))
         self.num_elements += 1
 
-    def simulate(self, iterations, colour, step_sample_rate, damping, noise, noisy, fuzz, width, height, channels, hdr_floats):
-        red, green, blue = colour
-        step = 1 / step_sample_rate
-
+    def simulate(self, iterations, damping, noise, noisy, fuzz, hdr):
         LOG.info('# Simulating: particles:%i iterations:%i', self.num_elements, iterations)
         for _ in range(iterations):
             for n in range(self.num_elements):
@@ -144,18 +189,9 @@ class Simulation(object):
                 vx, vy = self.vx[n], self.vy[n]
                 vx = (vx * damping) + (noise.value(x, y, 2) * 4.0 * noisy) + fuzzy(0.1) * fuzz
                 vy = (vy * damping) + (noise.value(x, y, 1) * 4.0 * noisy) + fuzzy(0.1) * fuzz
-
-                for _ in range(step_sample_rate):
-                    x += vx * step
-                    y += vy * step
-                    if x < 0 or x > width or y < 0 or y > height:
-                        break
-                    index = (int(x) + int(y) * width) * channels
-                    hdr_floats[index+2] += red
-                    hdr_floats[index+1] += green
-                    hdr_floats[index+0] += blue
-                self.x[n] = x
-                self.y[n] = y
+                hdr.accumulate(x, y, vx, vy)
+                self.x[n] = x + vx
+                self.y[n] = y + vy
                 self.vx[n] = vx
                 self.vy[n] = vy
 
@@ -165,7 +201,7 @@ class Simulation(object):
 @register
 def nebula(draw,
            noise,
-           max_age=100,         # (1, 500, 1)
+           iterations=100,      # (1, 500, 1)
            exposure=1.0,        # (0, 5, 0.01)
            damping=0.8,         # (0, 1.2, 0.01)
            noisy=1.0,           # (0, 10, 0.01)
@@ -176,9 +212,8 @@ def nebula(draw,
            spawn=10,            # (1, 100, 1)
            step_sample_rate=10  # Sample rate for each particle render.
           ):
-
     width, height, channels = 1000, 1000, 4
-    hdr_floats = [0.0] * (width * height * channels)
+    hdr = HDR(width, height, channels, step_sample_rate)
 
     for radius, colour in [(50, (1.0, 0.1, 0.1)),
                            #(100, (1, 0.5, 0.1)),
@@ -192,26 +227,10 @@ def nebula(draw,
         for angle in frange(0, tau, 0.5 / radius):
             for _ in range(spawn):
                 sim.add(500 + radius * mcos(angle), 500 + radius * msin(angle))
-
-        colour = tuple(c * intensity for c in colour)
-        sim.simulate(max_age, colour, step_sample_rate, damping, noise, noisy, fuzz, width, height, channels, hdr_floats)
-
-
+        hdr.colour(tuple(c * intensity for c in colour))
+        sim.simulate(iterations, damping, noise, noisy, fuzz, hdr)
     # Generate the final image from the accumulated particle simulation.
-    def tonemap(n):
-        return (1 - mpow(2, -n * 0.005 * exposure)) * 255
-    # image.get_data() -> channels are '0b 1g 2r 3a' written to via bytes([x])
-    # ord(image.get_data()[index]) = int
-    # bytearray gives indexed access to the ints.
-    output_buffer = draw.get_target().get_data()
-    for x in range(width):
-        for y in range(height):
-            index = (x + y * width) * channels
-            output_buffer[index:index+3] = bytes([
-                int(tonemap(hdr_floats[index+0])),
-                int(tonemap(hdr_floats[index+1])),
-                int(tonemap(hdr_floats[index+2]))
-            ])
+    hdr.tonemap(draw.get_target().get_data(), exposure)
 
 #######################################################################################################################
 
