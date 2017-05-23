@@ -35,6 +35,9 @@ def frange(start, end, step):
             yield start
             start += step
 
+def fuzzy(extent=1.0):
+    return (random_random() - 0.5) * extent * 2
+
 class Progress(object):
     def __init__(self, path, payload):
         self.timers = []
@@ -66,9 +69,9 @@ class OctaveNoise(object):
     def __init__(self, width, height, octaves=8, filename='octave.png'):
         try:
             image = cairo.ImageSurface.create_from_png(filename)
-            LOG.info('Loading: %s', filename)
+            LOG.info('# Loading: %s', filename)
         except FileNotFoundError:
-            LOG.info('Creating: %s', filename)
+            LOG.info('# Creating: %s', filename)
             image = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
             draw = cairo.Context(image)
             draw.rectangle(0, 0, width, height)
@@ -113,6 +116,50 @@ class OctaveNoise(object):
             response.append('{}: {}'.format(c, directions))
         return '\n'.join(response)
 
+class Simulation(object):
+    def __init__(self, vx_t0, vy_t0):
+        self.x = []
+        self.y = []
+        self.vx = []
+        self.vy = []
+        self.vx_t0 = vx_t0
+        self.vy_t0 = vy_t0
+        self.num_elements = 0
+
+    def add(self, x, y):
+        self.x.append(x)
+        self.y.append(y)
+        self.vx.append(fuzzy(self.vx_t0))
+        self.vy.append(fuzzy(self.vy_t0))
+        self.num_elements += 1
+
+    def simulate(self, iterations, colour, step_sample_rate, damping, noise, noisy, fuzz, width, height, channels, hdr_floats):
+        red, green, blue = colour
+        step = 1 / step_sample_rate
+
+        LOG.info('# Simulating: particles:%i iterations:%i', self.num_elements, iterations)
+        for _ in range(iterations):
+            for n in range(self.num_elements):
+                x, y = self.x[n], self.y[n]
+                vx, vy = self.vx[n], self.vy[n]
+                vx = (vx * damping) + (noise.value(x, y, 2) * 4.0 * noisy) + fuzzy(0.1) * fuzz
+                vy = (vy * damping) + (noise.value(x, y, 1) * 4.0 * noisy) + fuzzy(0.1) * fuzz
+
+                for _ in range(step_sample_rate):
+                    x += vx * step
+                    y += vy * step
+                    if x < 0 or x > width or y < 0 or y > height:
+                        break
+                    index = (int(x) + int(y) * width) * channels
+                    hdr_floats[index+2] += red
+                    hdr_floats[index+1] += green
+                    hdr_floats[index+0] += blue
+                self.x[n] = x
+                self.y[n] = y
+                self.vx[n] = vx
+                self.vy[n] = vy
+
+
 #######################################################################################################################
 
 @register
@@ -133,75 +180,30 @@ def nebula(draw,
     width, height, channels = 1000, 1000, 4
     hdr_floats = [0.0] * (width * height * channels)
 
+    for radius, colour in [(50, (1.0, 0.1, 0.1)),
+                           #(100, (1, 0.5, 0.1)),
+                           #(150, (0.3, 1, 0.3)),
+                           #(200, (0.25, 1, 0.75)),
+                           #(250, (0.2, 0.2, 1)),
+                           #(300, (0.75, 0.25, 1))
+                          ]:
+        LOG.info('# Generating: %s radius:%i colour:%s', 'circle', radius, colour)
+        sim = Simulation(initial_vx, initial_vy)
+        for angle in frange(0, tau, 0.5 / radius):
+            for _ in range(spawn):
+                sim.add(500 + radius * mcos(angle), 500 + radius * msin(angle))
+
+        colour = tuple(c * intensity for c in colour)
+        sim.simulate(max_age, colour, step_sample_rate, damping, noise, noisy, fuzz, width, height, channels, hdr_floats)
+
+
+    # Generate the final image from the accumulated particle simulation.
+    def tonemap(n):
+        return (1 - mpow(2, -n * 0.005 * exposure)) * 255
     # image.get_data() -> channels are '0b 1g 2r 3a' written to via bytes([x])
     # ord(image.get_data()[index]) = int
     # bytearray gives indexed access to the ints.
     output_buffer = draw.get_target().get_data()
-
-    def tonemap(n):
-        return (1 - mpow(2, -n * 0.005 * exposure)) * 255
-
-    def fuzzy(fmax, base=0):
-        return base + (random_random() - 0.5) * fmax * 2
-
-    class Particle(object):
-        def __init__(self, vx, vy, x, y):
-            self.vx, self.vy = vx, vy
-            self.x, self.y = x, y
-            self.age = 0
-
-        def __repr__(self):
-            return 'p({},{})v({},{})@{}'.format(self.x, self.y, self.vx, self.vy, self.age)
-
-        def tick(self):
-            self.vx = (self.vx * damping) + (noise.value(self.x, self.y, 2) * 4.0 * noisy) + fuzzy(0.1) * fuzz
-            self.vy = (self.vy * damping) + (noise.value(self.x, self.y, 1) * 4.0 * noisy) + fuzzy(0.1) * fuzz
-            self.age += 1
-
-        def wander(self, step_sample_rate, colour):
-            red, green, blue = colour
-            step = 1 / step_sample_rate
-            x, y = self.x, self.y
-            vx, vy = self.vx * step, self.vy * step
-            for _ in range(step_sample_rate):
-                x += vx
-                y += vy
-                if x < 0 or x > width or y < 0 or y > height:
-                    break
-                index = (int(x) + int(y) * width) * channels
-                hdr_floats[index+2] += red
-                hdr_floats[index+1] += green
-                hdr_floats[index+0] += blue
-            self.x, self.y = x, y
-
-    def simulate(particles, colour):
-        num_particles = len(particles)
-        LOG.info('Num particles: %i', num_particles)
-        while num_particles > 0:
-            num_particles = 0
-            for p in particles:
-                if p.age < max_age:
-                    num_particles += 1
-                    p.tick()
-                    p.wander(step_sample_rate, colour)
-
-    for radius, colour in [
-            (50, (1.0, 0.1, 0.1)),
-            #(100, (1, 0.5, 0.1)),
-            #(150, (0.3, 1, 0.3)),
-            #(200, (0.25, 1, 0.75)),
-            #(250, (0.2, 0.2, 1)),
-            #(300, (0.75, 0.25, 1)),
-        ]:
-        LOG.info('Radius: %i', radius)
-        particles = []
-        for angle in frange(0, tau, 0.5 / radius):
-            for _ in range(spawn):
-                particles.append(Particle(fuzzy(initial_vx), fuzzy(initial_vy), 500 + radius * mcos(angle), 500 + radius * msin(angle)))
-
-        colour = tuple(c * intensity for c in colour)
-        simulate(particles, colour)
-
     for x in range(width):
         for y in range(height):
             index = (x + y * width) * channels
