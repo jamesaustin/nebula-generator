@@ -89,8 +89,11 @@ class OctaveNoise(object):
         self.width = width
 
     def value(self, x, y, channel):
-        i = self.noise_bytearray[(int(x) + int(y) * self.width) * 4 + channel]
-        return (i - 127) / 127.0
+        index = (int(x) + int(y) * self.width) * 4 + channel
+        if index > len(self.noise_bytearray):
+            return 0
+        else:
+            return (self.noise_bytearray[index] - 127) / 127.0
 
     def __str__(self):
         response = []
@@ -115,7 +118,7 @@ class OctaveNoise(object):
 @register
 def nebula(draw,
            noise,
-           max_age=200,         # (1, 500, 1)
+           max_age=100,         # (1, 500, 1)
            exposure=1.0,        # (0, 5, 0.01)
            damping=0.8,         # (0, 1.2, 0.01)
            noisy=1.0,           # (0, 10, 0.01)
