@@ -8,6 +8,7 @@ from math import tau, cos as mcos, sin as msin, pow as mpow
 from os.path import join as path_join
 from os import makedirs as os_makedirs
 from threading import Timer
+from array import array
 
 # Requires module "cairocffi"
 # PYPI: https://pypi.python.org/pypi/cairocffi
@@ -118,23 +119,25 @@ class OctaveNoise(object):
 
 class HDR(object):
     def __init__(self, width, height, channels, step_sample_rate):
-        self.fbuffer = [0.0] * (width * height * channels)
+        self.fbuffer = array('f', (0 for _ in range(width * height * channels)))
         self.width = width
         self.height = height
         self.channels = channels
         self.step_sample_rate = step_sample_rate
+        self.step = 1 / step_sample_rate
 
-    def colour(self, colour):
+    def set_colour(self, colour):
         self.colour = colour
 
     def accumulate(self, x, y, vx, vy):
         fbuffer = self.fbuffer
         width, height, channels = self.width, self.height, self.channels
         red, green, blue = self.colour
-        step = 1 / self.step_sample_rate
+        vx *= self.step
+        vy *= self.step
         for _ in range(self.step_sample_rate):
-            x += vx * step
-            y += vy * step
+            x += vx
+            y += vy
             if x < 0 or x > width or y < 0 or y > height:
                 break
             index = (int(x) + int(y) * width) * channels
@@ -216,18 +219,18 @@ def nebula(draw,
     hdr = HDR(width, height, channels, step_sample_rate)
 
     for radius, colour in [(50, (1.0, 0.1, 0.1)),
-                           #(100, (1, 0.5, 0.1)),
-                           #(150, (0.3, 1, 0.3)),
-                           #(200, (0.25, 1, 0.75)),
-                           #(250, (0.2, 0.2, 1)),
-                           #(300, (0.75, 0.25, 1))
+                           (100, (1.0, 0.5, 0.1)),
+                           (150, (0.3, 1, 0.3)),
+                           (200, (0.25, 1, 0.75)),
+                           (250, (0.2, 0.2, 1)),
+                           (300, (0.75, 0.25, 1))
                           ]:
         LOG.info('# Generating: %s radius:%i colour:%s', 'circle', radius, colour)
         sim = Simulation(initial_vx, initial_vy)
         for angle in frange(0, tau, 0.5 / radius):
             for _ in range(spawn):
                 sim.add(500 + radius * mcos(angle), 500 + radius * msin(angle))
-        hdr.colour(tuple(c * intensity for c in colour))
+        hdr.set_colour(tuple(c * intensity for c in colour))
         sim.simulate(iterations, damping, noise, noisy, fuzz, hdr)
     # Generate the final image from the accumulated particle simulation.
     hdr.tonemap(draw.get_target().get_data(), exposure)
