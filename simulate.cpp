@@ -164,6 +164,7 @@ int main(int argc, char *argv[])
         }
     }
 
+    commands.close();
     stbi_image_free(noiseTexture);
     return 0;
 }
