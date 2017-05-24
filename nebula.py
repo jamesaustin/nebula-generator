@@ -21,6 +21,14 @@ import cairocffi as cairo
 
 LOG = logging.getLogger(__name__)
 
+###################################################
+ENABLE_SKIP = True
+ENABLE_COMMS = True
+def comm(s):
+    if ENABLE_COMMS:
+        print(s)
+###################################################
+
 REGISTERED_FUNCTIONS = {}
 def register(func):
     REGISTERED_FUNCTIONS[func.__name__] = func
@@ -117,6 +125,7 @@ class OctaveNoise(object):
             response.append('{}: {}'.format(c, directions))
         return '\n'.join(response)
 
+
 class HDR(object):
     def __init__(self, width, height, channels, step_sample_rate):
         self.fbuffer = array('f', (0 for _ in range(width * height * channels)))
@@ -125,10 +134,12 @@ class HDR(object):
         self.channels = channels
         self.step_sample_rate = step_sample_rate
         self.step = 1 / step_sample_rate
+        comm('STEP_SAMPLE_RATE {}'.format(step_sample_rate))
 
     def set_colour(self, colour):
         self.colour = colour
-
+        comm('COLOUR {} {} {}'.format(*colour))
+        
     def accumulate(self, x, y, vx, vy):
         fbuffer = self.fbuffer
         width, height, channels = self.width, self.height, self.channels
@@ -149,6 +160,9 @@ class HDR(object):
     def tonemap(self, target, exposure=1.0):
         fbuffer = self.fbuffer
         width, height, channels = self.width, self.height, self.channels
+        comm('TONEMAP {}'.format(exposure))
+        if ENABLE_SKIP:
+            return
 
         def _tonemap(n):
             return (1 - mpow(2, -n * 0.005 * exposure)) * 255
@@ -183,9 +197,13 @@ class Simulation(object):
         self.vx.append(fuzzy(self.vx_t0))
         self.vy.append(fuzzy(self.vy_t0))
         self.num_elements += 1
+        comm('PARTICLE {} {} {} {}'.format(x, y, self.vx[-1], self.vy[-1]))
 
     def simulate(self, iterations, damping, noise, noisy, fuzz, hdr):
         LOG.info('# Simulating: particles:%i iterations:%i', self.num_elements, iterations)
+        comm('SIMULATE {} {} {} {}'.format(iterations, damping, noisy, fuzz))
+        if ENABLE_SKIP:
+            return
         for _ in range(iterations):
             for n in range(self.num_elements):
                 x, y = self.x[n], self.y[n]
@@ -217,7 +235,6 @@ def nebula(draw,
           ):
     width, height, channels = 1000, 1000, 4
     hdr = HDR(width, height, channels, step_sample_rate)
-
     for radius, colour in [(50, (1.0, 0.1, 0.1)),
                            (100, (1.0, 0.5, 0.1)),
                            (150, (0.3, 1, 0.3)),

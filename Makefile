@@ -8,17 +8,19 @@ endif
 CXX=gcc-7
 CXXFLAGS=\
   -g \
+  -O3 \
   -std=c++14 \
   -Werror \
   -Wfatal-errors \
   -Wpedantic \
-  -Wall \
   -Wextra \
   -Wshadow \
   -fno-strict-aliasing
-LDFLAGS=-lc++
+LDFLAGS=-lstdc++
 TIDY_APP=clang-format
 GIT=git
+
+#-Wall \
 
 APP=simulate
 APPOPTS=assets/octave/octave.png
