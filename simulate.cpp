@@ -5,10 +5,11 @@
 #include "stb/stb_image_write.h"
 
 #include <array>
+#include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <memory>
-#include <random>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -17,11 +18,21 @@ typedef std::vector<std::array<float, 3>> PixelVector;
 typedef std::array<float, 4> ParticleArray;
 typedef std::vector<ParticleArray> ParticleVector;
 
-std::random_device rd;
-std::mt19937 rgen(rd());
-std::uniform_real_distribution<> rdis(0, 1);
+class PRNG
+{
+  private:
+    uint64_t mSeed;
 
-float fuzzy(float extent) { return (rdis(rgen) - 0.5f) * extent * 2.0f; }
+  public:
+    PRNG(uint64_t seed = 12118) : mSeed(seed == 0 ? 1 : seed){}; // seed CANNOT be 0!!
+    float Extents(float extents)
+    {
+        mSeed ^= mSeed >> 12;
+        mSeed ^= mSeed << 25;
+        mSeed ^= mSeed >> 27;
+        return -extents + float(mSeed * UINT64_C(2685821657736338717) * 5.4210105e-20) * (2 * extents);
+    };
+};
 
 int main(int argc, char *argv[])
 {
@@ -40,6 +51,7 @@ int main(int argc, char *argv[])
             return std::pair<float, float>{0.0f, 0.0f};
         }
         size_t index = ((int)x + (int)y * width) * channels;
+        // TODO: Precompute and store this remapping to [-1,+1]
         float noiseFirst = (float)(noiseTexture[index] - 127) / 127.0f;
         float noiseSecond = (float)(noiseTexture[index + 1] - 127) / 127.0f;
         return std::pair<float, float>{noiseFirst, noiseSecond};
@@ -50,13 +62,11 @@ int main(int argc, char *argv[])
 
     // Comment
     const std::string commentString("#");
-    const std::string stepSampleRateString("STEP_SAMPLE_RATE");
     const std::string particleString("PARTICLE");
     const std::string colourString("COLOUR");
     const std::string simulateString("SIMULATE");
     const std::string tonemapString("TONEMAP");
 
-    int stepSampleRate;
     float red, green, blue;
 
     ParticleVector particles;
@@ -69,7 +79,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        std::cout << "# Loading: " << argv[1] << std::endl;
+        std::cout << "# Simulating: " << argv[1] << std::endl;
     }
 
     bool readComms = true;
@@ -86,10 +96,6 @@ int main(int argc, char *argv[])
             std::cout << line << std::endl;
             continue;
         }
-        else if (token.compare(stepSampleRateString) == 0)
-        {
-            ss >> stepSampleRate;
-        }
         else if (token.compare(particleString) == 0)
         {
             float x, y, vx, vy;
@@ -102,11 +108,12 @@ int main(int argc, char *argv[])
         }
         else if (token.compare(simulateString) == 0)
         {
-            int iterations;
+            int iterations, stepSampleRate;
             float damping, noisy, fuzz;
-            ss >> iterations >> damping >> noisy >> fuzz;
+            ss >> iterations >> stepSampleRate >> damping >> noisy >> fuzz;
             std::cout << "# Simulating" << std::endl;
 
+            PRNG prng = PRNG();
             for (ParticleArray &p : particles)
             {
                 for (int i = 0; i < iterations; i++)
@@ -114,8 +121,8 @@ int main(int argc, char *argv[])
                     float x = p[0];
                     float y = p[1];
                     auto noise = noiseSample(x, y);
-                    float vx = p[2] * damping + (noise.first * 4.0 * noisy) + fuzzy(0.1) * fuzz;
-                    float vy = p[3] * damping + (noise.second * 4.0 * noisy) + fuzzy(0.1) * fuzz;
+                    float vx = p[2] * damping + (noise.first * 4.0 * noisy) + prng.Extents(0.1) * fuzz;
+                    float vy = p[3] * damping + (noise.second * 4.0 * noisy) + prng.Extents(0.1) * fuzz;
                     float step = 1.0f / stepSampleRate;
                     for (int j = 0; j < stepSampleRate; j++)
                     {
@@ -163,6 +170,8 @@ int main(int argc, char *argv[])
             }
 
             stbi_write_png(argv[3], width, height, channels, output.get(), width * channels);
+            std::cout << "# Saved: " << argv[3] << std::endl;
+
             readComms = false;
         }
     }

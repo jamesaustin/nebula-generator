@@ -8,9 +8,6 @@ from math import tau, cos as mcos, sin as msin
 from os.path import join as path_join
 from os import makedirs as os_makedirs
 
-# INFO:
-# * Arc is clockwise from horizonal
-
 LOG = logging.getLogger(__name__)
 
 REGISTERED_FUNCTIONS = {}
@@ -46,7 +43,6 @@ def nebula(output,
            spawn=10,            # (1, 100, 1)
            step_sample_rate=10  # Sample rate for each particle render.
           ):
-    output.write('STEP_SAMPLE_RATE {}\n'.format(step_sample_rate))
     for radius, colour in [(50, (1.0, 0.1, 0.1)),
                            (100, (1.0, 0.5, 0.1)),
                            (150, (0.3, 1, 0.3)),
@@ -60,7 +56,7 @@ def nebula(output,
                 x, y = 500 + radius * mcos(angle), 500 + radius * msin(angle)
                 output.write('PARTICLE {} {} {} {}\n'.format(x, y, fuzzy(initial_vx), fuzzy(initial_vy)))
         output.write('COLOUR {} {} {}\n'.format(*tuple(c * intensity for c in colour)))
-        output.write('SIMULATE {} {} {} {}\n'.format(iterations, damping, noisy, fuzz))
+        output.write('SIMULATE {} {} {} {} {}\n'.format(iterations, step_sample_rate, damping, noisy, fuzz))
     output.write('TONEMAP {}\n'.format(exposure))
 
 #######################################################################################################################
