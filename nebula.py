@@ -4,7 +4,7 @@ import logging
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from json import dumps as json_dumps, load as json_load
 from random import seed as random_seed, random as random_random
-from math import tau, cos as mcos, sin as msin, pow as mpow
+from math import tau, cos as mcos, sin as msin
 from os.path import join as path_join
 from os import makedirs as os_makedirs
 
@@ -59,7 +59,7 @@ def nebula(output,
             for _ in range(spawn):
                 x, y = 500 + radius * mcos(angle), 500 + radius * msin(angle)
                 output.write('PARTICLE {} {} {} {}\n'.format(x, y, fuzzy(initial_vx), fuzzy(initial_vy)))
-        output.write('COLOUR {} {} {}\n'.format(*colour))
+        output.write('COLOUR {} {} {}\n'.format(*tuple(c * intensity for c in colour)))
         output.write('SIMULATE {} {} {} {}\n'.format(iterations, damping, noisy, fuzz))
     output.write('TONEMAP {}\n'.format(exposure))
 
