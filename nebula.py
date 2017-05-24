@@ -7,27 +7,11 @@ from random import seed as random_seed, random as random_random
 from math import tau, cos as mcos, sin as msin, pow as mpow
 from os.path import join as path_join
 from os import makedirs as os_makedirs
-from threading import Timer
-from array import array
-
-# Requires module "cairocffi"
-# PYPI: https://pypi.python.org/pypi/cairocffi
-# DOCS: http://cairocffi.readthedocs.io/en/latest/
-# Install with: pip3 install cairocffi
-import cairocffi as cairo
 
 # INFO:
 # * Arc is clockwise from horizonal
 
 LOG = logging.getLogger(__name__)
-
-###################################################
-ENABLE_SKIP = True
-ENABLE_COMMS = True
-def comm(s):
-    if ENABLE_COMMS:
-        print(s)
-###################################################
 
 REGISTERED_FUNCTIONS = {}
 def register(func):
@@ -47,181 +31,10 @@ def frange(start, end, step):
 def fuzzy(extent=1.0):
     return (random_random() - 0.5) * extent * 2
 
-class Progress(object):
-    def __init__(self, path, payload):
-        self.timers = []
-        self.path = path
-        self.payload = payload
-        os_makedirs(path, exist_ok=True)
-        LOG.info('# Progress: Creating Queue')
-        self.add_timer()
-    def cancel(self):
-        LOG.info('# Progress: Deleting Queue[%i]', len(self.timers))
-        for t in self.timers:
-            t.cancel()
-        self.timers.clear()
-    def add_timer(self, time=1):
-        t = Timer(time, self.save_progress)
-        t.start()
-        self.timers.append(t)
-    def save_progress(self):
-        filename = path_join(self.path, '{:05}.png'.format(len(self.timers)))
-        LOG.info('# Progress: Saving %s', filename)
-        image = self.payload
-        image.flush()
-        image.write_to_png(filename)
-        self.add_timer()
-
-#######################################################################################################################
-
-class OctaveNoise(object):
-    def __init__(self, width, height, octaves=8, filename='octave.png'):
-        try:
-            image = cairo.ImageSurface.create_from_png(filename)
-            LOG.info('# Loading: %s', filename)
-        except FileNotFoundError:
-            LOG.info('# Creating: %s', filename)
-            image = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
-            draw = cairo.Context(image)
-            draw.rectangle(0, 0, width, height)
-            draw.set_source_rgb(0, 0, 0)
-            draw.fill()
-            alpha = 1.0 / octaves
-            for octave in range(0, octaves):
-                step = mpow(2, octave)
-                LOG.info('%i of %i, step %i', octave, octaves, step)
-                for x in frange(0, width, step):
-                    for y in frange(0, height, step):
-                        draw.rectangle(x, y, step, step)
-                        draw.set_source_rgba(random_random(), random_random(), random_random(), alpha)
-                        draw.fill()
-            image.flush()
-            image.write_to_png(filename)
-        self.noise_bytearray = bytearray(image.get_data())
-        self.width = width
-
-    def value(self, x, y, channel):
-        index = (int(x) + int(y) * self.width) * 4 + channel
-        if index > len(self.noise_bytearray):
-            return 0
-        else:
-            return (self.noise_bytearray[index] - 127) / 127.0
-
-    def __str__(self):
-        response = []
-        for c in range(4):
-            directions = [0, 0, 0, 0]
-            for x in range(1000):
-                for y in range(1000):
-                    v = self.value(x, y, c)
-                    if v > 0:
-                        directions[0] += 1
-                    if v > 0:
-                        directions[1] += 1
-                    if v < 0:
-                        directions[2] += 1
-                    if v < 0:
-                        directions[3] += 1
-            response.append('{}: {}'.format(c, directions))
-        return '\n'.join(response)
-
-
-class HDR(object):
-    def __init__(self, width, height, channels, step_sample_rate):
-        self.fbuffer = array('f', (0 for _ in range(width * height * channels)))
-        self.width = width
-        self.height = height
-        self.channels = channels
-        self.step_sample_rate = step_sample_rate
-        self.step = 1 / step_sample_rate
-        comm('STEP_SAMPLE_RATE {}'.format(step_sample_rate))
-
-    def set_colour(self, colour):
-        self.colour = colour
-        comm('COLOUR {} {} {}'.format(*colour))
-        
-    def accumulate(self, x, y, vx, vy):
-        fbuffer = self.fbuffer
-        width, height, channels = self.width, self.height, self.channels
-        red, green, blue = self.colour
-        vx *= self.step
-        vy *= self.step
-        for _ in range(self.step_sample_rate):
-            x += vx
-            y += vy
-            if x < 0 or x > width or y < 0 or y > height:
-                break
-            index = (int(x) + int(y) * width) * channels
-            # Buffer is BGRa format
-            fbuffer[index+0] += blue
-            fbuffer[index+1] += green
-            fbuffer[index+2] += red
-
-    def tonemap(self, target, exposure=1.0):
-        fbuffer = self.fbuffer
-        width, height, channels = self.width, self.height, self.channels
-        comm('TONEMAP {}'.format(exposure))
-        if ENABLE_SKIP:
-            return
-
-        def _tonemap(n):
-            return (1 - mpow(2, -n * 0.005 * exposure)) * 255
-
-        # image.get_data() -> channels are '0b 1g 2r 3a' written to via bytes([x])
-        # ord(image.get_data()[index]) = int
-        # bytearray gives indexed access to the ints.
-        for x in range(width):
-            for y in range(height):
-                index = (x + y * width) * channels
-                # Buffer is BGRa format
-                target[index:index+3] = bytes([
-                    int(_tonemap(fbuffer[index+0])),
-                    int(_tonemap(fbuffer[index+1])),
-                    int(_tonemap(fbuffer[index+2]))
-                ])
-
-
-class Simulation(object):
-    def __init__(self, vx_t0, vy_t0):
-        self.x = []
-        self.y = []
-        self.vx = []
-        self.vy = []
-        self.vx_t0 = vx_t0
-        self.vy_t0 = vy_t0
-        self.num_elements = 0
-
-    def add(self, x, y):
-        self.x.append(x)
-        self.y.append(y)
-        self.vx.append(fuzzy(self.vx_t0))
-        self.vy.append(fuzzy(self.vy_t0))
-        self.num_elements += 1
-        comm('PARTICLE {} {} {} {}'.format(x, y, self.vx[-1], self.vy[-1]))
-
-    def simulate(self, iterations, damping, noise, noisy, fuzz, hdr):
-        LOG.info('# Simulating: particles:%i iterations:%i', self.num_elements, iterations)
-        comm('SIMULATE {} {} {} {}'.format(iterations, damping, noisy, fuzz))
-        if ENABLE_SKIP:
-            return
-        for _ in range(iterations):
-            for n in range(self.num_elements):
-                x, y = self.x[n], self.y[n]
-                vx, vy = self.vx[n], self.vy[n]
-                vx = (vx * damping) + (noise.value(x, y, 2) * 4.0 * noisy) + fuzzy(0.1) * fuzz
-                vy = (vy * damping) + (noise.value(x, y, 1) * 4.0 * noisy) + fuzzy(0.1) * fuzz
-                hdr.accumulate(x, y, vx, vy)
-                self.x[n] = x + vx
-                self.y[n] = y + vy
-                self.vx[n] = vx
-                self.vy[n] = vy
-
-
 #######################################################################################################################
 
 @register
-def nebula(draw,
-           noise,
+def nebula(output,
            iterations=100,      # (1, 500, 1)
            exposure=1.0,        # (0, 5, 0.01)
            damping=0.8,         # (0, 1.2, 0.01)
@@ -233,8 +46,7 @@ def nebula(draw,
            spawn=10,            # (1, 100, 1)
            step_sample_rate=10  # Sample rate for each particle render.
           ):
-    width, height, channels = 1000, 1000, 4
-    hdr = HDR(width, height, channels, step_sample_rate)
+    output.write('STEP_SAMPLE_RATE {}\n'.format(step_sample_rate))
     for radius, colour in [(50, (1.0, 0.1, 0.1)),
                            (100, (1.0, 0.5, 0.1)),
                            (150, (0.3, 1, 0.3)),
@@ -243,23 +55,20 @@ def nebula(draw,
                            (300, (0.75, 0.25, 1))
                           ]:
         LOG.info('# Generating: %s radius:%i colour:%s', 'circle', radius, colour)
-        sim = Simulation(initial_vx, initial_vy)
         for angle in frange(0, tau, 0.5 / radius):
             for _ in range(spawn):
-                sim.add(500 + radius * mcos(angle), 500 + radius * msin(angle))
-        hdr.set_colour(tuple(c * intensity for c in colour))
-        sim.simulate(iterations, damping, noise, noisy, fuzz, hdr)
-    # Generate the final image from the accumulated particle simulation.
-    hdr.tonemap(draw.get_target().get_data(), exposure)
+                x, y = 500 + radius * mcos(angle), 500 + radius * msin(angle)
+                output.write('PARTICLE {} {} {} {}\n'.format(x, y, fuzzy(initial_vx), fuzzy(initial_vy)))
+        output.write('COLOUR {} {} {}\n'.format(*colour))
+        output.write('SIMULATE {} {} {} {}\n'.format(iterations, damping, noisy, fuzz))
+    output.write('TONEMAP {}\n'.format(exposure))
 
 #######################################################################################################################
 
 def parse_args():
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('config', help='Configuration JSON')
-    parser.add_argument('--path', help='Output path')
-    parser.add_argument('--noise', help='Noise PNG, will be generated if it doesn\'t exist', default='octave.png')
-    parser.add_argument('--progress', help='Capture progress to folder')
+    parser.add_argument('path', help='Output path')
     parser.add_argument('--seed', default='Boundless', help='Generation seed')
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('-d', '--debug', action='store_true')
@@ -284,43 +93,18 @@ def main():
 
     filenames = []
     for n, config in enumerate(configs):
-        width, height = 1000, 1000
-        image = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
-        draw = cairo.Context(image)
-
-        # Black background by default
-        draw.rectangle(0, 0, width, height)
-        draw.set_source_rgb(0, 0, 0)
-        draw.fill()
-
-        # Translate the context into [-1,1]x[-1,1]
-        draw.translate(width / 2.0, height / 2.0)
-        draw.scale(min(width, height) / 2.0, min(width, height) / 2.0)
-
-        config['noise'] = OctaveNoise(width, height, filename=args.noise)
-
-        if args.progress:
-            progress = Progress(args.progress, image)
-
         random_seed(args.seed)
         fn_name = config.pop('_fn')
-        REGISTERED_FUNCTIONS[fn_name](draw, **config)
 
-        if args.progress:
-            progress.cancel()
-
-        filename = '{:03}.{}.png'.format(n, fn_name)
-        if args.path:
-            os_makedirs(args.path, exist_ok=True)
-            filename = path_join(args.path, filename)
-
-        image.flush()
-        image.write_to_png(filename)
+        os_makedirs(args.path, exist_ok=True)
+        filename = '{:03}.{}.txt'.format(n, fn_name)
+        filename = path_join(args.path, filename)
+        with open(filename, 'w') as f:
+            REGISTERED_FUNCTIONS[fn_name](f, **config)
         filenames.append(filename)
         LOG.debug('# %s', filename)
 
     return {
-        'dimensions': [width, height],
         'outputs': filenames
     }
 

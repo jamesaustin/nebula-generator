@@ -5,6 +5,7 @@
 #include "stb/stb_image_write.h"
 
 #include <array>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <random>
@@ -24,15 +25,15 @@ float fuzzy(float extent) { return (rdis(rgen) - 0.5f) * extent * 2.0f; }
 
 int main(int argc, char *argv[])
 {
-    if (argc != 3)
+    if (argc != 4)
     {
-        printf("# Usage: %s noise.png output.png\n", argv[0]);
+        printf("# Usage: %s commands.txt noise.png output.png\n", argv[0]);
         return 0;
     }
 
     int width, height, channels;
-    unsigned char *noiseTexture = stbi_load(argv[1], &width, &height, &channels, 4);
-    printf("# Loaded: %s [%ix%ix%i]\n", argv[1], width, height, channels);
+    unsigned char *noiseTexture = stbi_load(argv[2], &width, &height, &channels, 4);
+    printf("# Loaded: %s [%ix%ix%i]\n", argv[2], width, height, channels);
     auto noiseSample = [noiseTexture, width, height, channels](float x, float y) {
         if ((int)x < 0 || (int)x >= width || (int)y < 0 || (int)y >= height)
         {
@@ -60,11 +61,18 @@ int main(int argc, char *argv[])
 
     ParticleVector particles;
 
+    std::ifstream commands(argv[1]);
+    if (!commands.is_open())
+    {
+        std::cout << "# Failed to open: " << argv[1] << std::endl;
+        return -1;
+    }
+
     bool readComms = true;
     while (readComms)
     {
         std::string line;
-        std::getline(std::cin, line);
+        std::getline(commands, line);
         std::stringstream ss(line);
         std::string token;
         ss >> token;
@@ -151,7 +159,7 @@ int main(int argc, char *argv[])
                 }
             }
 
-            stbi_write_png(argv[2], width, height, channels, output.get(), width * channels);
+            stbi_write_png(argv[3], width, height, channels, output.get(), width * channels);
             readComms = false;
         }
     }
