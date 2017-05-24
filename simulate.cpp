@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+typedef std::vector<std::pair<float, float>> NoiseVector;
 typedef std::vector<std::array<float, 3>> PixelVector;
 typedef std::array<float, 4> ParticleArray;
 typedef std::vector<ParticleArray> ParticleVector;
@@ -38,29 +39,34 @@ int main(int argc, char *argv[])
 {
     if (argc != 4)
     {
-        printf("# Usage: %s commands.txt noise.png output.png\n", argv[0]);
+        std::cout << "# Usage: " << argv[0] << " commands.txt noise.png output.png" << std::endl;
         return 0;
     }
 
     int width, height, channels;
     unsigned char *noiseTexture = stbi_load(argv[2], &width, &height, &channels, 4);
     printf("# Loaded: %s [%ix%ix%i]\n", argv[2], width, height, channels);
-    auto noiseSample = [noiseTexture, width, height, channels](float x, float y) {
+
+    NoiseVector noiseVector;
+    for (int n = 0; n < (width * height); n++)
+    {
+        noiseVector.emplace_back((float)(noiseTexture[n * channels] - 127) / 127.0f,
+                                 (float)(noiseTexture[n * channels + 1] - 127) / 127.0f);
+    }
+    stbi_image_free(noiseTexture);
+
+    auto noiseSample = [noiseVector, width, height](float x, float y) {
         if ((int)x < 0 || (int)x >= width || (int)y < 0 || (int)y >= height)
         {
             return std::pair<float, float>{0.0f, 0.0f};
         }
-        size_t index = ((int)x + (int)y * width) * channels;
-        // TODO: Precompute and store this remapping to [-1,+1]
-        float noiseFirst = (float)(noiseTexture[index] - 127) / 127.0f;
-        float noiseSecond = (float)(noiseTexture[index + 1] - 127) / 127.0f;
-        return std::pair<float, float>{noiseFirst, noiseSecond};
+        size_t index = (int)x + (int)y * width;
+        return noiseVector[index];
     };
 
     PixelVector hdr;
     hdr.resize(width * height);
 
-    // Comment
     const std::string commentString("#");
     const std::string particleString("PARTICLE");
     const std::string colourString("COLOUR");
@@ -79,7 +85,7 @@ int main(int argc, char *argv[])
     }
     else
     {
-        std::cout << "# Simulating: " << argv[1] << std::endl;
+        std::cout << "# Commands: " << argv[1] << std::endl;
     }
 
     bool readComms = true;
@@ -177,6 +183,5 @@ int main(int argc, char *argv[])
     }
 
     commands.close();
-    stbi_image_free(noiseTexture);
     return 0;
 }
