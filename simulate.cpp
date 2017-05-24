@@ -67,6 +67,10 @@ int main(int argc, char *argv[])
         std::cout << "# Failed to open: " << argv[1] << std::endl;
         return -1;
     }
+    else
+    {
+        std::cout << "# Loading: " << argv[1] << std::endl;
+    }
 
     bool readComms = true;
     while (readComms)
@@ -132,7 +136,6 @@ int main(int argc, char *argv[])
                     p[3] = vy;
                 }
             }
-            std::cout << "# Simulating Complete" << std::endl;
             particles.clear();
         }
         else if (token.compare(tonemapString) == 0)
