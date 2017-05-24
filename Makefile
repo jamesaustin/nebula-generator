@@ -10,6 +10,7 @@ CXXFLAGS=\
   -g \
   -O3 \
   -std=c++14 \
+  -Wall \
   -Werror \
   -Wfatal-errors \
   -Wpedantic \
@@ -20,7 +21,6 @@ LDFLAGS=-lstdc++
 TIDY_APP=clang-format
 GIT=git
 
-#-Wall \
 
 APP=simulate
 APPOPTS=assets/octave/octave.png
