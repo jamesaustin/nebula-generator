@@ -47,25 +47,15 @@ int main(int argc, char *argv[])
     unsigned char *noiseTexture = stbi_load(argv[2], &width, &height, &channels, 4);
     printf("# Loaded: %s [%ix%ix%i]\n", argv[2], width, height, channels);
 
-    NoiseVector noiseVector;
+    NoiseVector noiseVector(width * height);
     for (int n = 0; n < (width * height); n++)
     {
-        noiseVector.emplace_back((float)(noiseTexture[n * channels] - 127) / 127.0f,
-                                 (float)(noiseTexture[n * channels + 1] - 127) / 127.0f);
+        noiseVector[n] = {(float)(noiseTexture[n * channels] - 127) / 127.0f,
+                          (float)(noiseTexture[n * channels + 1] - 127) / 127.0f};
     }
     stbi_image_free(noiseTexture);
 
-    auto noiseSample = [noiseVector, width, height](float x, float y) {
-        if ((int)x < 0 || (int)x >= width || (int)y < 0 || (int)y >= height)
-        {
-            return std::pair<float, float>{0.0f, 0.0f};
-        }
-        size_t index = (int)x + (int)y * width;
-        return noiseVector[index];
-    };
-
-    PixelVector hdr;
-    hdr.resize(width * height);
+    PixelVector hdr(width * height);
 
     const std::string commentString("#");
     const std::string particleString("PARTICLE");
@@ -120,15 +110,19 @@ int main(int argc, char *argv[])
             std::cout << "# Simulating" << std::endl;
 
             PRNG prng = PRNG();
-            for (ParticleArray &p : particles)
+            for (const ParticleArray &p : particles)
             {
-                for (int i = 0; i < iterations; i++)
+                float x = p[0];
+                float y = p[1];
+                float vx = p[2];
+                float vy = p[3];
+                size_t index = (int)x + (int)y * width;
+                bool alive = true;
+
+                for (int i = 0; alive && i < iterations; i++)
                 {
-                    float x = p[0];
-                    float y = p[1];
-                    auto noise = noiseSample(x, y);
-                    float vx = p[2] * damping + (noise.first * 4.0 * noisy) + prng.Extents(0.1) * fuzz;
-                    float vy = p[3] * damping + (noise.second * 4.0 * noisy) + prng.Extents(0.1) * fuzz;
+                    vx = vx * damping + (noiseVector[index].first * 4.0 * noisy) + prng.Extents(0.1) * fuzz;
+                    vy = vy * damping + (noiseVector[index].second * 4.0 * noisy) + prng.Extents(0.1) * fuzz;
                     float step = 1.0f / stepSampleRate;
                     for (int j = 0; j < stepSampleRate; j++)
                     {
@@ -136,17 +130,14 @@ int main(int argc, char *argv[])
                         y += vy * step;
                         if ((int)x < 0 || (int)x >= width || (int)y < 0 || (int)y >= height)
                         {
+                            alive = false;
                             break;
                         }
-                        size_t index = (int)x + (int)y * width;
+                        index = (int)x + (int)y * width;
                         hdr[index][0] += red;
                         hdr[index][1] += green;
                         hdr[index][2] += blue;
                     }
-                    p[0] = x;
-                    p[1] = y;
-                    p[2] = vx;
-                    p[3] = vy;
                 }
             }
             particles.clear();
