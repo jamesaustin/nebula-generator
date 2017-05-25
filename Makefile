@@ -10,6 +10,7 @@ CXXFLAGS=\
   -g \
   -O3 \
   -std=c++14 \
+  -march=native \
   -Wall \
   -Werror \
   -Wfatal-errors \
