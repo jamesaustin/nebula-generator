@@ -51,12 +51,12 @@ def nebula(output,
                            (300, (0.75, 0.25, 1))
                           ]:
         LOG.info('# Generating: %s radius:%i colour:%s', 'circle', radius, colour)
+        output.write('SIMULATE {} {} {} {} {}\n'.format(iterations, step_sample_rate, damping, noisy, fuzz))
+        output.write('COLOUR {} {} {}\n'.format(*tuple(c * intensity for c in colour)))
         for angle in frange(0, tau, 0.5 / radius):
             for _ in range(spawn):
                 x, y = 500 + radius * mcos(angle), 500 + radius * msin(angle)
                 output.write('PARTICLE {} {} {} {}\n'.format(x, y, fuzzy(initial_vx), fuzzy(initial_vy)))
-        output.write('COLOUR {} {} {}\n'.format(*tuple(c * intensity for c in colour)))
-        output.write('SIMULATE {} {} {} {} {}\n'.format(iterations, step_sample_rate, damping, noisy, fuzz))
     output.write('TONEMAP {}\n'.format(exposure))
 
 #######################################################################################################################

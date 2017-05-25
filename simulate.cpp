@@ -63,10 +63,6 @@ int main(int argc, char *argv[])
     const std::string simulateString("SIMULATE");
     const std::string tonemapString("TONEMAP");
 
-    float red, green, blue;
-
-    ParticleVector particles;
-
     std::ifstream commands(argv[1]);
     if (!commands.is_open())
     {
@@ -77,6 +73,11 @@ int main(int argc, char *argv[])
     {
         std::cout << "# Commands: " << argv[1] << std::endl;
     }
+
+    int iterations, stepSampleRate;
+    float damping, noisy, fuzz;
+    float red, green, blue;
+    PRNG prng;
 
     bool readComms = true;
     while (readComms)
@@ -96,7 +97,29 @@ int main(int argc, char *argv[])
         {
             float x, y, vx, vy;
             ss >> x >> y >> vx >> vy;
-            particles.emplace_back(ParticleArray{x, y, vx, vy});
+            size_t index = (int)x + (int)y * width;
+            bool alive = true;
+
+            for (int i = 0; alive && i < iterations; i++)
+            {
+                vx = vx * damping + (noiseVector[index].first * 4.0 * noisy) + prng.Extents(0.1) * fuzz;
+                vy = vy * damping + (noiseVector[index].second * 4.0 * noisy) + prng.Extents(0.1) * fuzz;
+                float step = 1.0f / stepSampleRate;
+                for (int j = 0; j < stepSampleRate; j++)
+                {
+                    x += vx * step;
+                    y += vy * step;
+                    if ((int)x < 0 || (int)x >= width || (int)y < 0 || (int)y >= height)
+                    {
+                        alive = false;
+                        break;
+                    }
+                    index = (int)x + (int)y * width;
+                    hdr[index][0] += red;
+                    hdr[index][1] += green;
+                    hdr[index][2] += blue;
+                }
+            }
         }
         else if (token.compare(colourString) == 0)
         {
@@ -104,43 +127,9 @@ int main(int argc, char *argv[])
         }
         else if (token.compare(simulateString) == 0)
         {
-            int iterations, stepSampleRate;
-            float damping, noisy, fuzz;
             ss >> iterations >> stepSampleRate >> damping >> noisy >> fuzz;
+            prng = PRNG();
             std::cout << "# Simulating" << std::endl;
-
-            PRNG prng = PRNG();
-            for (const ParticleArray &p : particles)
-            {
-                float x = p[0];
-                float y = p[1];
-                float vx = p[2];
-                float vy = p[3];
-                size_t index = (int)x + (int)y * width;
-                bool alive = true;
-
-                for (int i = 0; alive && i < iterations; i++)
-                {
-                    vx = vx * damping + (noiseVector[index].first * 4.0 * noisy) + prng.Extents(0.1) * fuzz;
-                    vy = vy * damping + (noiseVector[index].second * 4.0 * noisy) + prng.Extents(0.1) * fuzz;
-                    float step = 1.0f / stepSampleRate;
-                    for (int j = 0; j < stepSampleRate; j++)
-                    {
-                        x += vx * step;
-                        y += vy * step;
-                        if ((int)x < 0 || (int)x >= width || (int)y < 0 || (int)y >= height)
-                        {
-                            alive = false;
-                            break;
-                        }
-                        index = (int)x + (int)y * width;
-                        hdr[index][0] += red;
-                        hdr[index][1] += green;
-                        hdr[index][2] += blue;
-                    }
-                }
-            }
-            particles.clear();
         }
         else if (token.compare(tonemapString) == 0)
         {
