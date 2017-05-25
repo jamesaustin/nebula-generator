@@ -57,7 +57,6 @@ int main(int argc, char *argv[])
 
     PixelVector hdr(width * height);
 
-    const std::string commentString("#");
     const std::string particleString("PARTICLE");
     const std::string colourString("COLOUR");
     const std::string simulateString("SIMULATE");
@@ -79,27 +78,19 @@ int main(int argc, char *argv[])
     float red, green, blue;
     PRNG prng;
 
-    bool readComms = true;
-    while (readComms)
+    for (std::string line; std::getline(commands, line);)
     {
-        std::string line;
-        std::getline(commands, line);
         std::stringstream ss(line);
         std::string token;
         ss >> token;
 
-        if (token.compare(commentString) == 0)
-        {
-            std::cout << line << std::endl;
-            continue;
-        }
-        else if (token.compare(particleString) == 0)
+        if (token.compare(particleString) == 0)
         {
             float x, y, vx, vy;
             ss >> x >> y >> vx >> vy;
             size_t index = (int)x + (int)y * width;
-            bool alive = true;
 
+            bool alive = true;
             for (int i = 0; alive && i < iterations; i++)
             {
                 vx = vx * damping + (noiseVector[index].first * 4.0 * noisy) + prng.Extents(0.1) * fuzz;
@@ -142,7 +133,6 @@ int main(int argc, char *argv[])
             };
 
             std::unique_ptr<unsigned char[]> output(new unsigned char[width * height * channels]);
-
             for (int x = 0; x < width; x++)
             {
                 for (int y = 0; y < height; y++)
@@ -154,11 +144,8 @@ int main(int argc, char *argv[])
                     output[index * channels + 3] = 255;
                 }
             }
-
             stbi_write_png(argv[3], width, height, channels, output.get(), width * channels);
             std::cout << "# Saved: " << argv[3] << std::endl;
-
-            readComms = false;
         }
     }
 
