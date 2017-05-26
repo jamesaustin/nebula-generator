@@ -1,5 +1,8 @@
+
 # C/C++
 *.o
+bin/
+obj/
 
 # PYTHON
 
