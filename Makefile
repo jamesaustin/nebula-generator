@@ -22,20 +22,25 @@ LDFLAGS=-lstdc++
 TIDY_APP=clang-format
 GIT=git
 
+SRCDIR=src
+BUILDDIR=build
+BINDIR=$(BUILDDIR)/bin
+OBJDIR=$(BUILDDIR)/obj
 
-APP=simulate
+SRC=$(wildcard $(SRCDIR)/*.cpp)
+HEADERS=$(wildcard $(SRCDIR)/*.h)
+OBJS=$(addprefix $(OBJDIR)/,$(notdir $(SRC:.cpp=.o)))
+APP=$(BINDIR)/simulate
 APPOPTS=assets/octave/octave.png
-SOURCES=$(wildcard *.cpp)
-HEADERS=$(wildcard *.h)
-OBJS=$(SOURCES:.cpp=.o)
+
 LIBS=
-INCLUDES=
+INCLUDES=-Istb
 FRAMEWORKS=
 
 .PHONY: run
 run: all
 	@echo [run] $(APP)
-	$(HIDE)./$(APP) $(APPOPTS)
+	$(HIDE)$(APP) $(APPOPTS)
 
 .PHONY: all
 all: status $(APP) ;
@@ -49,21 +54,28 @@ status:
 .PHONY: clean
 clean:
 	-rm $(OBJS)
+	-rmdir $(OBJDIR)
 	-rm $(APP)
+	-rmdir $(BINDIR)
+	-rmdir -p $(BUILDDIR)
 
-$(APP): $(OBJS) Makefile
-	@echo [app] $@
+$(APP): $(OBJS) Makefile | $(BINDIR)
+	@echo [link] $@
 	$(HIDE)$(CXX) $(LDFLAGS) $(OBJS) -o $@ $(LIBS) $(FRAMEWORKS)
 
 .SUFFIXES:.cpp .h .o .cpp.tidy .h.tidy
-$(SOURCES:.cpp=.o) : %.o: %.cpp
+$(OBJS) : $(OBJDIR)/%.o : $(SRCDIR)/%.cpp | $(OBJDIR)
 	@echo [tidy] $<
 	$(HIDE)$(TIDY_APP) -i $<
 	@echo [c++] $<
 	$(HIDE)$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
+$(BINDIR) $(OBJDIR):
+	@echo [mkdir] $(@)
+	$(HIDE)mkdir -p $(@)
+
 .PHONY: tidy
-tidy: $(addsuffix .tidy,$(SOURCES) $(HEADERS)) status ;
+tidy: $(addsuffix .tidy,$(SRC) $(HEADERS)) status ;
 
 %.cpp.tidy: %.cpp
 	@echo [tidy] $<
