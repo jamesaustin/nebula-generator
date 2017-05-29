@@ -5,11 +5,13 @@ ifndef DEBUG
 HIDE=@
 endif
 
+C=gcc-7
 CXX=gcc-7
-CXXFLAGS=\
+
+CFLAGS=\
+  -pg \
   -g \
   -O3 \
-  -std=c++14 \
   -march=native \
   -Wall \
   -Werror \
@@ -17,25 +19,34 @@ CXXFLAGS=\
   -Wpedantic \
   -Wextra \
   -Wshadow \
-  -fno-strict-aliasing
-LDFLAGS=-lstdc++
-TIDY_APP=clang-format
-GIT=git
+  -fno-strict-aliasing \
+  -pedantic \
+  -pedantic-errors
+CXXFLAGS=$(CFLAGS) \
+  -std=c++14
+LDFLAGS=-pg
+LDXXFLAGS=$(LDFLAGS) -lstdc++
 
 SRCDIR=src
 BUILDDIR=build
 BINDIR=$(BUILDDIR)/bin
 OBJDIR=$(BUILDDIR)/obj
 
-SRC=$(wildcard $(SRCDIR)/*.cpp)
+CSRC=$(wildcard $(SRCDIR)/*.c)
+COBJS=$(addprefix $(OBJDIR)/,$(notdir $(CSRC:.c=.obj)))
+CPPSRC=$(wildcard $(SRCDIR)/*.cpp)
+CPPOBJS=$(addprefix $(OBJDIR)/,$(notdir $(CPPSRC:.cpp=.o)))
+
 HEADERS=$(wildcard $(SRCDIR)/*.h)
-OBJS=$(addprefix $(OBJDIR)/,$(notdir $(SRC:.cpp=.o)))
 APP=$(BINDIR)/simulate
+APP_C=$(BINDIR)/simulate_c
 APPOPTS=assets/octave/octave.png
 
 LIBS=
 INCLUDES=-Istb
 FRAMEWORKS=
+TIDY_APP=clang-format
+GIT=git
 
 .PHONY: run
 run: all
@@ -43,7 +54,7 @@ run: all
 	$(HIDE)$(APP) $(APPOPTS)
 
 .PHONY: all
-all: status $(APP) ;
+all: status $(APP) $(APP_C) ;
 Makefile: ;
 
 .PHONY: status
@@ -53,22 +64,35 @@ status:
 
 .PHONY: clean
 clean:
-	-rm $(OBJS)
+	-rm $(COBJS)
+	-rm $(CPPOBJS)
 	-rmdir $(OBJDIR)
 	-rm $(APP)
+	-rm $(APP_C)
 	-rmdir $(BINDIR)
 	-rmdir -p $(BUILDDIR)
 
-$(APP): $(OBJS) Makefile | $(BINDIR)
+$(APP_C): $(COBJS) Makefile | $(BINDIR)
 	@echo [link] $@
-	$(HIDE)$(CXX) $(LDFLAGS) $(OBJS) -o $@ $(LIBS) $(FRAMEWORKS)
+	$(HIDE)$(C) $(LDFLAGS) $(COBJS) -o $@ $(LIBS) $(FRAMEWORKS)
+
+$(APP): $(CPPOBJS) Makefile | $(BINDIR)
+	@echo [link] $@
+	$(HIDE)$(CXX) $(LDXXFLAGS) $(CPPOBJS) -o $@ $(LIBS) $(FRAMEWORKS)
+
+.SUFFIXES:.c .obg .c.tidy
+$(COBJS) : $(OBJDIR)/%.obj : $(SRCDIR)/%.c | $(OBJDIR)
+	@echo [tidy] $<
+	$(HIDE)$(TIDY_APP) -i $<
+	@echo [c] $<
+	$(HIDE)time $(C) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 .SUFFIXES:.cpp .h .o .cpp.tidy .h.tidy
-$(OBJS) : $(OBJDIR)/%.o : $(SRCDIR)/%.cpp | $(OBJDIR)
+$(CPPOBJS) : $(OBJDIR)/%.o : $(SRCDIR)/%.cpp | $(OBJDIR)
 	@echo [tidy] $<
 	$(HIDE)$(TIDY_APP) -i $<
 	@echo [c++] $<
-	$(HIDE)$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+	$(HIDE)time $(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BINDIR) $(OBJDIR):
 	@echo [mkdir] $(@)
@@ -76,6 +100,10 @@ $(BINDIR) $(OBJDIR):
 
 .PHONY: tidy
 tidy: $(addsuffix .tidy,$(SRC) $(HEADERS)) status ;
+
+%.c.tidy: %.c
+	@echo [tidy] $<
+	$(HIDE)$(TIDY_APP) -i $<
 
 %.cpp.tidy: %.cpp
 	@echo [tidy] $<
