@@ -9,7 +9,6 @@ C=gcc-7
 CXX=gcc-7
 
 CFLAGS=\
-  -pg \
   -g \
   -O3 \
   -march=native \
