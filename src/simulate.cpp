@@ -73,16 +73,13 @@ int main(int argc, char *argv[])
     float red, green, blue;
     PRNG prng;
 
-    for (std::string line; std::getline(commands, line);)
+    std::string token;
+    while (commands >> token)
     {
-        std::stringstream ss(line);
-        std::string token;
-        ss >> token;
-
         if (token.compare(particleString) == 0)
         {
             float x, y, vx, vy;
-            ss >> x >> y >> vx >> vy;
+            commands >> x >> y >> vx >> vy;
             size_t index = (int)x + (int)y * width;
 
             bool alive = true;
@@ -109,18 +106,18 @@ int main(int argc, char *argv[])
         }
         else if (token.compare(colourString) == 0)
         {
-            ss >> red >> green >> blue;
+            commands >> red >> green >> blue;
         }
         else if (token.compare(simulateString) == 0)
         {
-            ss >> iterations >> stepSampleRate >> damping >> noisy >> fuzz;
+            commands >> iterations >> stepSampleRate >> damping >> noisy >> fuzz;
             prng = PRNG();
             std::cout << "# Simulating" << std::endl;
         }
         else if (token.compare(tonemapString) == 0)
         {
             float exposure;
-            ss >> exposure;
+            commands >> exposure;
             std::cout << "# Tonemapping" << std::endl;
 
             auto tonemap = [exposure](float n) {
