@@ -81,8 +81,12 @@ int main(int argc, char *argv[])
     {
         if (0 == strncmp(line, particleLabel, sizeof(particleLabel) - 1))
         {
-            float x, y, vx, vy;
-            sscanf(line + sizeof(particleLabel), "%f %f %f %f", &x, &y, &vx, &vy);
+            char *next = line + sizeof(particleLabel);
+            float x = strtof(next, &next);
+            float y = strtof(next, &next);
+            float vx = strtof(next, &next);
+            float vy = strtof(next, &next);
+            // sscanf(line + sizeof(particleLabel), "%f %f %f %f", &x, &y, &vx, &vy);
 
             size_t index = (int)x + (int)y * width;
             bool alive = true;
