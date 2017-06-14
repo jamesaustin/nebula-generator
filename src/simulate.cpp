@@ -11,8 +11,8 @@
 #include <string>
 #include <vector>
 
-typedef std::vector<std::pair<float, float>> NoiseVector;
-typedef std::vector<std::array<float, 3>> PixelVector;
+#include <atomic>
+#include <thread>
 
 class PRNG
 {
@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
     unsigned char *noiseTexture = stbi_load(argv[2], &width, &height, &channels, 4);
     printf("# Loaded: %s [%ix%ix%i]\n", argv[2], width, height, channels);
 
-    NoiseVector noiseVector(width * height);
+    std::vector<std::pair<float, float>> noiseVector(width * height);
     for (int n = 0; n < (width * height); n++)
     {
         noiseVector[n] = {(float)(noiseTexture[n * channels] - 127) / 127.0f,
@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
     }
     stbi_image_free(noiseTexture);
 
-    PixelVector hdr(width * height);
+    std::vector<std::array<float, 3>> hdr(width * height);
 
     const std::string particleString("PARTICLE");
     const std::string colourString("COLOUR");
@@ -125,17 +125,28 @@ int main(int argc, char *argv[])
             };
 
             std::unique_ptr<unsigned char[]> output(new unsigned char[width * height * channels]);
-            for (int x = 0; x < width; x++)
+
+            std::vector<std::thread> threads;
+            std::atomic<int> x_next{0};
+            for (unsigned n = 0; n < 4; n++)
             {
-                for (int y = 0; y < height; y++)
-                {
-                    size_t index = (x + y * width);
-                    output[index * channels] = tonemap(hdr[index][0]);
-                    output[index * channels + 1] = tonemap(hdr[index][1]);
-                    output[index * channels + 2] = tonemap(hdr[index][2]);
-                    output[index * channels + 3] = 255;
-                }
+                threads.emplace_back([&]() {
+                    for (int x; (x = x_next++) < width; x++)
+                    {
+                        for (int y = 0; y < height; y++)
+                        {
+                            size_t index = (x + y * width);
+                            output[index * channels] = tonemap(hdr[index][0]);
+                            output[index * channels + 1] = tonemap(hdr[index][1]);
+                            output[index * channels + 2] = tonemap(hdr[index][2]);
+                            output[index * channels + 3] = 255;
+                        }
+                    }
+                });
             }
+            for (auto &t : threads)
+                t.join();
+
             stbi_write_png(argv[3], width, height, channels, output.get(), width * channels);
             std::cout << "# Saved: " << argv[3] << std::endl;
         }

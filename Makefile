@@ -9,7 +9,7 @@ C=gcc-7
 CXX=gcc-7
 
 CFLAGS=\
-  -g \
+  -pipe \
   -O3 \
   -march=native \
   -Wall \
