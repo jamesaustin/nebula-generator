@@ -2,6 +2,7 @@
 #include "stb_image_write.h"
 
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
@@ -10,10 +11,8 @@
 #include <memory>
 #include <sstream>
 #include <string>
-#include <vector>
-
-#include <atomic>
 #include <thread>
+#include <vector>
 
 class PRNG
 {
