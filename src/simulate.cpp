@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <sstream>
@@ -53,6 +54,7 @@ int main(int argc, char *argv[])
     std::vector<std::array<float, 3>> hdr(width * height);
 
     const std::string particleString("PARTICLE");
+    const std::string endString("END");
     const std::string colourString("COLOUR");
     const std::string simulateString("SIMULATE");
     const std::string tonemapString("TONEMAP");
@@ -126,12 +128,17 @@ int main(int argc, char *argv[])
 
             std::unique_ptr<unsigned char[]> output(new unsigned char[width * height * channels]);
 
+            const int num_threads = std::thread::hardware_concurrency();
+            auto c_start = std::clock();
+            auto t_start = std::chrono::high_resolution_clock::now();
+#define PARALLEL
+#ifdef PARALLEL
             std::vector<std::thread> threads;
             std::atomic<int> x_next{0};
-            for (unsigned n = 0; n < 4; n++)
+            for (int n = 0; n < num_threads; n++)
             {
                 threads.emplace_back([&]() {
-                    for (int x; (x = x_next++) < width; x++)
+                    for (int x; (x = x_next++) < width;)
                     {
                         for (int y = 0; y < height; y++)
                         {
@@ -146,6 +153,25 @@ int main(int argc, char *argv[])
             }
             for (auto &t : threads)
                 t.join();
+#else
+            for (int x = 0; x < width; x++)
+            {
+                for (int y = 0; y < height; y++)
+                {
+                    size_t index = (x + y * width);
+                    output[index * channels] = tonemap(hdr[index][0]);
+                    output[index * channels + 1] = tonemap(hdr[index][1]);
+                    output[index * channels + 2] = tonemap(hdr[index][2]);
+                    output[index * channels + 3] = 255;
+                }
+            }
+#endif
+            auto c_end = std::clock();
+            auto t_end = std::chrono::high_resolution_clock::now();
+            std::cout << std::fixed << std::setprecision(4)
+                      << "# CPU time: " << 1000.0 * (c_end - c_start) / CLOCKS_PER_SEC << "ms\n"
+                      << "# Real time: " << std::chrono::duration<double, std::milli>(t_end - t_start).count()
+                      << "ms\n";
 
             stbi_write_png(argv[3], width, height, channels, output.get(), width * channels);
             std::cout << "# Saved: " << argv[3] << std::endl;
