@@ -57,6 +57,7 @@ def nebula(output,
             for _ in range(spawn):
                 x, y = 500 + radius * mcos(angle), 500 + radius * msin(angle)
                 output.write('PARTICLE {} {} {} {}\n'.format(x, y, fuzzy(initial_vx), fuzzy(initial_vy)))
+        output.write('END\n')
     output.write('TONEMAP {}\n'.format(exposure))
 
 #######################################################################################################################
